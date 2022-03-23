@@ -8,6 +8,7 @@ from einops import rearrange, repeat
 from torch import nn
 from timm.models.layers.weight_init import trunc_normal_
 import math
+from PASS import RunningMode, MaskMode, MaskGate, m_cfg
 
 MIN_NUM_PATCHES = 16
 BN_MOMENTUM = 0.1
@@ -442,7 +443,7 @@ class TokenPose_TB_base(nn.Module):
         return x
 
 class TokenPose_L_base(nn.Module):
-    def __init__(self, *, feature_size, patch_size, num_keypoints, dim, depth, heads, mlp_dim, apply_init=False, hidden_heatmap_dim=64*6,heatmap_dim=64*48,heatmap_size=[64,48], channels = 3, dropout = 0., emb_dropout = 0.,pos_embedding_type="learnable"):
+    def __init__(self, *, feature_size, patch_size, num_keypoints, dim, depth, heads, mlp_dim, apply_init=False, hidden_heatmap_dim=64*6,heatmap_dim=64*48,heatmap_size=[64,48], channels = 3, dropout = 0., emb_dropout = 0.,pos_embedding_type="learnable", running_mode=RunningMode.GatePreTrain):
         super().__init__()
         assert isinstance(feature_size,list) and isinstance(patch_size,list), 'image_size and patch_size should be list'
         assert feature_size[0] % patch_size[0] == 0 and feature_size[1] % patch_size[1] == 0, 'Image dimensions must be divisible by the patch size.'
@@ -452,6 +453,10 @@ class TokenPose_L_base(nn.Module):
 
         self.inplanes = 64
         self.patch_size = patch_size
+        self.dim=dim
+
+        self.gate = MaskGate(patch_size=patch_size, patch_num=num_patches, input_channel=48, output_channel=256, running_mode=running_mode,expand_dim=dim)
+
         self.heatmap_size = heatmap_size
         self.num_keypoints = num_keypoints
         self.num_patches = num_patches
@@ -566,9 +571,20 @@ class TokenPose_L_base(nn.Module):
 
     def forward(self, feature, mask = None):
         p = self.patch_size
+        # x = self.gate(feature,x)
+        # mask = torch.unsqueeze(mask,2)
+        # mask = mask.repeat(1,1,self.dim)
+
+
         # transformer
         x = rearrange(feature, 'b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = p[0], p2 = p[1])
         x = self.patch_to_embedding(x)
+
+        if m_cfg.mask_mode != MaskMode.Anchor and self.gate is not None:
+            x = self.gate(feature, x)
+
+
+
 
         b, n, _ = x.shape
 

@@ -7,6 +7,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from PASS import RunningMode, MaskMode, MaskGate, m_cfg
 
 import argparse
 import os
@@ -25,13 +26,14 @@ from tensorboardX import SummaryWriter
 import _init_paths
 from config import cfg
 from config import update_config
-from core.loss import JointsMSELoss
+from core.loss import JointsMSELoss,JointsTripleLoss
 from core.function import train
 from core.function import validate
 from utils.utils import get_optimizer
 from utils.utils import save_checkpoint
 from utils.utils import create_logger
 from utils.utils import get_model_summary
+from PASS import RunningMode
 
 import dataset
 import models
@@ -67,6 +69,8 @@ def parse_args():
                         help='prev Model directory',
                         type=str,
                         default='')
+    parser.add_argument('--mode', type=str, default='Pretrain',
+                                 help='Mask Gate mode')
 
     args = parser.parse_args()
 
@@ -75,6 +79,20 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if args.mode == 'Pretrain':
+        args.running_mode = RunningMode.GatePreTrain
+    if args.mode == 'Finetuning':
+        args.running_mode = RunningMode.FineTuning
+    if args.mode == 'Test':
+        args.running_mode = RunningMode.Test
+        m_cfg.mask_mode = MaskMode.Anchor
+    if args.mode == 'Origin':
+        args.running_mode = RunningMode.BackboneTrain
+        m_cfg.mask_mode = MaskMode.Anchor
+    if args.mode == 'BackboneTest':
+        args.running_mode = RunningMode.BackboneTest
+        m_cfg.mask_mode = MaskMode.Anchor
+
     update_config(cfg, args)
 
     logger, final_output_dir, tb_log_dir = create_logger(
@@ -89,7 +107,7 @@ def main():
     torch.backends.cudnn.enabled = cfg.CUDNN.ENABLED
 
     model = eval('models.'+cfg.MODEL.NAME+'.get_pose_net')(
-        cfg, is_train=True
+        cfg,args, is_train=True
     )
 
     # copy model file
@@ -115,9 +133,14 @@ def main():
     model = torch.nn.DataParallel(model, device_ids=cfg.GPUS).cuda()
 
     # define loss function (criterion) and optimizer
-    criterion = JointsMSELoss(
-        use_target_weight=cfg.LOSS.USE_TARGET_WEIGHT
-    ).cuda()
+    if args.running_mode == RunningMode.GatePreTrain:
+        criterion = JointsTripleLoss(
+            use_target_weight=cfg.LOSS.USE_TARGET_WEIGHT
+        ).cuda()
+    else:
+        criterion = JointsMSELoss(
+            use_target_weight=cfg.LOSS.USE_TARGET_WEIGHT
+        ).cuda()
 
     # Data loading code
     normalize = transforms.Normalize(
@@ -168,9 +191,81 @@ def main():
         begin_epoch = checkpoint['epoch']
         best_perf = checkpoint['perf']
         last_epoch = checkpoint['epoch']
-        model.load_state_dict(checkpoint['state_dict'])
+        state_dict_ = checkpoint['state_dict']
+        # len_origin = len(checkpoint['optimizer']['param_groups'][0]['params'])
+        # len_new = len(optimizer.param_groups[0]['params'])
+        # while len_origin < len_new:
+        #     len_origin += 1
+        #     checkpoint['optimizer']['param_groups'][0]['params'].append(len_origin)
+        # # checkpoint['optimizer']['param_groups'][0]['params'] = optimizer.param_groups[0]['params']
+        # optimizer.load_state_dict(checkpoint['optimizer'])
+        optimizer.param_groups[0]['initial_lr'] = checkpoint['optimizer']['param_groups'][0]['initial_lr']
+        optimizer.param_groups[0]['lr'] = checkpoint['optimizer']['param_groups'][0]['lr']
+        optimizer.param_groups[0]['betas'] = checkpoint['optimizer']['param_groups'][0]['betas']
+        optimizer.param_groups[0]['eps'] = checkpoint['optimizer']['param_groups'][0]['eps']
+        optimizer.param_groups[0]['weight_decay'] = checkpoint['optimizer']['param_groups'][0]['weight_decay']
+        optimizer.param_groups[0]['amsgrad'] = checkpoint['optimizer']['param_groups'][0]['amsgrad']
 
-        optimizer.load_state_dict(checkpoint['optimizer'])
+
+        # state_optimizer_ = checkpoint['optimizer']
+
+
+        state_dict = {}
+        # state_optimizer = {}
+
+        # convert data_parallal to model
+        for k in state_dict_:
+            if k.startswith('module') and not k.startswith('module_list'):
+                state_dict[k[7:]] = state_dict_[k]
+            else:
+                state_dict[k] = state_dict_[k]
+        model_state_dict = model.state_dict()
+
+        # for k in state_optimizer_:
+        #     if k.startswith('module') and not k.startswith('module_list'):
+        #         state_optimizer[k[7:]] = state_optimizer_[k]
+        #     else:
+        #         state_optimizer[k] = state_optimizer_[k]
+        # model_state_optimizer = optimizer.state_dict()
+        # # check loaded parameters and created model parameters
+
+        msg = 'If you see this, your model does not fully load the ' + \
+              'pre-trained weight. Please make sure ' + \
+              'you have correctly specified --arch xxx ' + \
+              'or set the correct --num_classes for your own dataset.'
+        for k in state_dict:
+            if k in model_state_dict:
+                if state_dict[k].shape != model_state_dict[k].shape:
+                    print('Skip loading parameter {}, required shape{}, ' \
+                          'loaded shape{}. {}'.format(
+                        k, model_state_dict[k].shape, state_dict[k].shape, msg))
+                    state_dict[k] = model_state_dict[k]
+            else:
+                print('Drop parameter {}.'.format(k) + msg)
+        for k in model_state_dict:
+            if not (k in state_dict):
+                print('No param {}.'.format(k) + msg)
+                state_dict[k] = model_state_dict[k]
+
+        # for k in state_optimizer:
+        #     if k in model_state_optimizer:
+        #         if state_optimizer[k].shape != model_state_optimizer[k].shape:
+        #             print('Skip loading parameter {}, required shape{}, ' \
+        #                   'loaded shape{}. {}'.format(
+        #                 k, model_state_optimizer[k].shape, state_dict[k].shape, msg))
+        #             state_optimizer[k] = model_state_optimizer[k]
+        #     else:
+        #         print('Drop parameter {}.'.format(k) + msg)
+        # for k in model_state_optimizer:
+        #     if not (k in state_optimizer):
+        #         print('No param {}.'.format(k) + msg)
+        #         state_optimizer[k] = model_state_dict[k]
+
+        model.load_state_dict(state_dict, strict=False)
+
+        # model.load_state_dict(checkpoint['state_dict'])
+
+
         logger.info("=> loaded checkpoint '{}' (epoch {})".format(
             checkpoint_file, checkpoint['epoch']))
 
@@ -187,7 +282,7 @@ def main():
 
         # train for one epoch
         train(cfg, train_loader, model, criterion, optimizer, epoch,
-              final_output_dir, tb_log_dir, writer_dict)
+              final_output_dir, tb_log_dir, writer_dict,args.running_mode)
 
 
         # evaluate on validation set

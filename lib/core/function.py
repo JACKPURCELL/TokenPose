@@ -21,13 +21,14 @@ from core.evaluate import accuracy
 from core.inference import get_final_preds
 from utils.transforms import flip_back
 from utils.vis import save_debug_images
+from PASS import RunningMode, MaskMode, MaskGate, m_cfg
 
 
 logger = logging.getLogger(__name__)
 
 
 def train(config, train_loader, model, criterion, optimizer, epoch,
-          output_dir, tb_log_dir, writer_dict):
+          output_dir, tb_log_dir, writer_dict,running_mode):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -42,18 +43,35 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
         data_time.update(time.time() - end)
 
         # compute output
-        outputs = model(input)
-
-        target = target.cuda(non_blocking=True)
-        target_weight = target_weight.cuda(non_blocking=True)
-
-        if isinstance(outputs, list):
-            loss = criterion(outputs[0], target, target_weight)
-            for output in outputs[1:]:
-                loss += criterion(output, target, target_weight)
+        if running_mode == RunningMode.GatePreTrain:
+            dys,dxs,ys = model(input)
+            target = target.cuda(non_blocking=True)
+            target_weight = target_weight.cuda(non_blocking=True)
+            if isinstance(dys, list):
+                loss, pos_dist, neg_dist, pos_neg = criterion(dys[0], dxs[0], ys[0,], target_weight)
+                for dy,dx,y in dys[1:],dxs[1:],ys[1:]:
+                    a = criterion(dy, dx, y, target_weight)
+                    loss += a[0]
+                    pos_dist += a[1]
+                    neg_dist += a[2]
+                    pos_neg += a[3]
+            else:
+                output = dys
+                loss, pos_dist, neg_dist, pos_neg = criterion(dys,dxs,ys, target_weight)
         else:
-            output = outputs
-            loss = criterion(output, target, target_weight)
+            outputs = model(input)
+            target = target.cuda(non_blocking=True)
+            target_weight = target_weight.cuda(non_blocking=True)
+
+            if isinstance(outputs, list):
+                loss = criterion(outputs[0], target, target_weight)
+                for output in outputs[1:]:
+                    loss += criterion(output, target, target_weight)
+            else:
+                output = outputs
+                loss = criterion(output, target, target_weight)
+
+
 
         # loss = criterion(output, target, target_weight)
 
@@ -74,15 +92,30 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
         end = time.time()
 
         if i % config.PRINT_FREQ == 0:
-            msg = 'Epoch: [{0}][{1}/{2}]\t' \
-                  'Time {batch_time.val:.3f}s ({batch_time.avg:.3f}s)\t' \
-                  'Speed {speed:.1f} samples/s\t' \
-                  'Data {data_time.val:.3f}s ({data_time.avg:.3f}s)\t' \
-                  'Loss {loss.val:.5f} ({loss.avg:.5f})\t' \
-                  'Accuracy {acc.val:.3f} ({acc.avg:.3f})'.format(
-                      epoch, i, len(train_loader), batch_time=batch_time,
-                      speed=input.size(0)/batch_time.val,
-                      data_time=data_time, loss=losses, acc=acc)
+            if running_mode == RunningMode.GatePreTrain:
+                msg = 'Epoch: [{0}][{1}/{2}]\t' \
+                      'Time {batch_time.val:.3f}s ({batch_time.avg:.3f}s)\t' \
+                      'Speed {speed:.1f} samples/s\t' \
+                      'Data {data_time.val:.3f}s ({data_time.avg:.3f}s)\t' \
+                      'Loss {loss.val:.5f} ({loss.avg:.5f})\t' \
+                      'pos_dist {pos_dist.val:.5f} \t' \
+                      'neg_dist {pos_dist.val:.5f} \t' \
+                      'pos_neg {pos_dist.val:.5f} \t' \
+                      'Accuracy {acc.val:.3f} ({acc.avg:.3f})'.format(
+                          epoch, i, len(train_loader), batch_time=batch_time,
+                          speed=input.size(0)/batch_time.val,
+                          data_time=data_time, loss=losses,pos_dist=pos_dist,
+                          neg_dist=neg_dist, pos_neg=pos_neg, acc=acc)
+            else:
+                msg = 'Epoch: [{0}][{1}/{2}]\t' \
+                      'Time {batch_time.val:.3f}s ({batch_time.avg:.3f}s)\t' \
+                      'Speed {speed:.1f} samples/s\t' \
+                      'Data {data_time.val:.3f}s ({data_time.avg:.3f}s)\t' \
+                      'Loss {loss.val:.5f} ({loss.avg:.5f})\t' \
+                      'Accuracy {acc.val:.3f} ({acc.avg:.3f})'.format(
+                          epoch, i, len(train_loader), batch_time=batch_time,
+                          speed=input.size(0)/batch_time.val,
+                          data_time=data_time, loss=losses, acc=acc)
             logger.info(msg)
 
             writer = writer_dict['writer']

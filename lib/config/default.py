@@ -10,7 +10,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-
+from PASS import RunningMode, MaskMode, MaskGate, m_cfg
 from yacs.config import CfgNode as CN
 
 
@@ -25,7 +25,6 @@ _C.PRINT_FREQ = 20
 _C.AUTO_RESUME = False
 _C.PIN_MEMORY = True
 _C.RANK = 0
-
 # Cudnn related params
 _C.CUDNN = CN()
 _C.CUDNN.BENCHMARK = True

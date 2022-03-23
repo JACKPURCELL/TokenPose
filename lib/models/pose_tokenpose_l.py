@@ -18,13 +18,14 @@ import torch.nn as nn
 import math
 from .tokenpose_base import TokenPose_L_base
 from .hr_base import HRNET_base
+from PASS import RunningMode, MaskMode, MaskGate, m_cfg
 
 BN_MOMENTUM = 0.1
 logger = logging.getLogger(__name__)
 
 class TokenPose_L(nn.Module):
 
-    def __init__(self, cfg, **kwargs):
+    def __init__(self, cfg,args, **kwargs):
 
         extra = cfg.MODEL.EXTRA
 
@@ -32,6 +33,8 @@ class TokenPose_L(nn.Module):
 
         print(cfg.MODEL)
         ##################################################
+        self.running_mode = args.running_mode
+
         self.pre_feature = HRNET_base(cfg,**kwargs)
         self.transformer = TokenPose_L_base(feature_size=[cfg.MODEL.IMAGE_SIZE[1]//4,cfg.MODEL.IMAGE_SIZE[0]//4],patch_size=[cfg.MODEL.PATCH_SIZE[1],cfg.MODEL.PATCH_SIZE[0]],
                             num_keypoints = cfg.MODEL.NUM_JOINTS,dim =cfg.MODEL.DIM,
@@ -47,15 +50,40 @@ class TokenPose_L(nn.Module):
 
     def forward(self, x):
         x = self.pre_feature(x)
-        x = self.transformer(x)
-        return x
+        if self.running_mode == RunningMode.GatePreTrain:
+            for n, p in self.transformer.named_parameters():
+                if 'gate' in n:
+                    p.requires_grad = True
+                else:
+                    p.requires_grad = False
+            m_cfg.mask_mode = MaskMode.Positive
+            dy = self.transformer(x)
+            m_cfg.mask_mode = MaskMode.Negative
+            dx = self.transformer(x)
+            m_cfg.mask_mode = MaskMode.Anchor
+            y = self.transformer(x)
+            return dy,dx,y
+        else :
+            if self.running_mode == RunningMode.FineTuning:
+                for n, p in self.patch_embed.named_parameters():
+                    if 'gate' in n:
+                        p.requires_grad = False
+                    else:
+                        p.requires_grad = True
+                    m_cfg.mask_mode = MaskMode.Positive
+            elif self.running_mode == RunningMode.Test:
+                m_cfg.mask_mode = MaskMode.Positive
+            elif self.running_mode == RunningMode.BackboneTrain or self.running_mode == RunningMode.BackboneTrain:
+                m_cfg.mask_mode = MaskMode.Anchor
+            x = self.transformer(x)
+            return x
 
     def init_weights(self, pretrained='', cfg=None):
         self.pre_feature.init_weights(pretrained)
 
 
-def get_pose_net(cfg, is_train, **kwargs):
-    model = TokenPose_L(cfg, **kwargs)
+def get_pose_net(cfg, args,is_train, **kwargs):
+    model = TokenPose_L(cfg, args,**kwargs)
     if is_train and cfg.MODEL.INIT_WEIGHTS:
         model.init_weights(cfg.MODEL.PRETRAINED,cfg)
     return model
