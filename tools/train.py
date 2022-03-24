@@ -30,7 +30,7 @@ from core.loss import JointsMSELoss,JointsTripleLoss
 from core.function import train
 from core.function import validate
 from utils.utils import get_optimizer
-from utils.utils import save_checkpoint
+from utils.utils import save_checkpoint,save_every_checkpoint
 from utils.utils import create_logger
 from utils.utils import get_model_summary
 from PASS import RunningMode
@@ -284,30 +284,42 @@ def main():
         train(cfg, train_loader, model, criterion, optimizer, epoch,
               final_output_dir, tb_log_dir, writer_dict,args.running_mode)
 
+        if args.running_mode == RunningMode.GatePreTrain:
+            lr_scheduler.step()
+            logger.info('=> saving checkpoint to {}'.format(final_output_dir))
+            save_every_checkpoint({
+                'epoch': epoch + 1,
+                'model': cfg.MODEL.NAME,
+                'state_dict': model.state_dict(),
+                'perf': perf_indicator,
+                'optimizer': optimizer.state_dict(),
+            }, best_model, final_output_dir, filename=str(epoch + 1)+'checkpoint.pth')
+            lr_scheduler.step()
 
-        # evaluate on validation set
-        perf_indicator = validate(
-            cfg, valid_loader, valid_dataset, model, criterion,
-            final_output_dir, tb_log_dir, writer_dict
-        )
-        lr_scheduler.step()
-
-
-        if perf_indicator >= best_perf:
-            best_perf = perf_indicator
-            best_model = True
         else:
-            best_model = False
+            # evaluate on validation set
+            perf_indicator = validate(
+                cfg, valid_loader, valid_dataset, model, criterion,
+                final_output_dir, tb_log_dir, writer_dict
+            )
+            lr_scheduler.step()
 
-        logger.info('=> saving checkpoint to {}'.format(final_output_dir))
-        save_checkpoint({
-            'epoch': epoch + 1,
-            'model': cfg.MODEL.NAME,
-            'state_dict': model.state_dict(),
-            'best_state_dict': model.module.state_dict(),
-            'perf': perf_indicator,
-            'optimizer': optimizer.state_dict(),
-        }, best_model, final_output_dir)
+
+            if perf_indicator >= best_perf:
+                best_perf = perf_indicator
+                best_model = True
+            else:
+                best_model = False
+
+            logger.info('=> saving checkpoint to {}'.format(final_output_dir))
+            save_checkpoint({
+                'epoch': epoch + 1,
+                'model': cfg.MODEL.NAME,
+                'state_dict': model.state_dict(),
+                'best_state_dict': model.module.state_dict(),
+                'perf': perf_indicator,
+                'optimizer': optimizer.state_dict(),
+            }, best_model, final_output_dir)
 
     final_model_state_file = os.path.join(
         final_output_dir, 'final_state.pth'

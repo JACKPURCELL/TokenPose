@@ -83,6 +83,10 @@ def save_checkpoint(states, is_best, output_dir,
         torch.save(states['best_state_dict'],
                    os.path.join(output_dir, 'model_best.pth'))
 
+def save_every_checkpoint(states, output_dir,
+                    filename='checkpoint.pth'):
+    torch.save(states, os.path.join(output_dir, filename))
+
 
 def get_model_summary(model, *input_tensors, item_length=26, verbose=False):
     """
