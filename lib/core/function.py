@@ -98,9 +98,9 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
                       'Speed {speed:.1f} samples/s\t' \
                       'Data {data_time.val:.3f}s ({data_time.avg:.3f}s)\t' \
                       'Loss {loss.val:.5f} ({loss.avg:.5f})\t' \
-                      'pos_dist {pos_dist.val:.5f} \t' \
-                      'neg_dist {pos_dist.val:.5f} \t' \
-                      'pos_neg {pos_dist.val:.5f} \t' \
+                      'pos_dist {pos_dist:.5f} \t' \
+                      'neg_dist {neg_dist:.5f} \t' \
+                      'pos_neg {pos_neg:.5f} \t' \
                       'Accuracy {acc.val:.3f} ({acc.avg:.3f})'.format(
                           epoch, i, len(train_loader), batch_time=batch_time,
                           speed=input.size(0)/batch_time.val,
