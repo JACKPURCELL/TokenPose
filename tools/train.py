@@ -92,7 +92,7 @@ def main():
     if args.mode == 'BackboneTest':
         args.running_mode = RunningMode.BackboneTest
         m_cfg.mask_mode = MaskMode.Anchor
-
+    print(m_cfg.mask_mode,args.running_mode)
     update_config(cfg, args)
 
     logger, final_output_dir, tb_log_dir = create_logger(
@@ -191,7 +191,7 @@ def main():
         begin_epoch = checkpoint['epoch']
         best_perf = checkpoint['perf']
         last_epoch = checkpoint['epoch']
-        state_dict_ = checkpoint['state_dict']
+        state_dict = checkpoint['state_dict']
         # len_origin = len(checkpoint['optimizer']['param_groups'][0]['params'])
         # len_new = len(optimizer.param_groups[0]['params'])
         # while len_origin < len_new:
@@ -210,17 +210,22 @@ def main():
         # state_optimizer_ = checkpoint['optimizer']
 
 
-        state_dict = {}
+        # state_dict = {}
+        model_state_dict={}
         # state_optimizer = {}
 
         # convert data_parallal to model
-        for k in state_dict_:
-            if k.startswith('module') and not k.startswith('module_list'):
-                state_dict[k[7:]] = state_dict_[k]
-            else:
-                state_dict[k] = state_dict_[k]
+        # for k in state_dict_:
+        #     if k.startswith('module') and not k.startswith('module_list'):
+        #         state_dict[k[7:]] = state_dict_[k]
+        #     else:
+        #         state_dict[k] = state_dict_[k]
         model_state_dict = model.state_dict()
-
+        # for k in model_state_dict_:
+        #     if k.startswith('module') and not k.startswith('module_list'):
+        #         model_state_dict[k[7:]] = model_state_dict_[k]
+        #     else:
+        #         model_state_dict[k] = model_state_dict_[k]
         # for k in state_optimizer_:
         #     if k.startswith('module') and not k.startswith('module_list'):
         #         state_optimizer[k[7:]] = state_optimizer_[k]
@@ -243,6 +248,7 @@ def main():
             else:
                 print('Drop parameter {}.'.format(k) + msg)
         for k in model_state_dict:
+            print(k)
             if not (k in state_dict):
                 print('No param {}.'.format(k) + msg)
                 state_dict[k] = model_state_dict[k]
@@ -291,9 +297,8 @@ def main():
                 'epoch': epoch + 1,
                 'model': cfg.MODEL.NAME,
                 'state_dict': model.state_dict(),
-                'perf': perf_indicator,
                 'optimizer': optimizer.state_dict(),
-            }, best_model, final_output_dir, filename=str(epoch + 1)+'checkpoint.pth')
+            },  final_output_dir, filename=str(epoch + 1)+'checkpoint.pth')
             lr_scheduler.step()
 
         else:
