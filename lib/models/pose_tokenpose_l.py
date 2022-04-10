@@ -16,11 +16,22 @@ import torch
 import torch.nn as nn
 # import timm
 import math
+from enum import Enum
 from .tokenpose_base import TokenPose_L_base
 from .hr_base import HRNET_base
 
 BN_MOMENTUM = 0.1
 logger = logging.getLogger(__name__)
+
+class RunningMode(Enum):
+    BackboneTrain = 0
+    PreTrain = 1
+    FineTuning = 2
+    Test = 3
+class MaskMode(Enum):
+    Anchor = 0
+    Positive = 1
+    Negative = 2
 
 class TokenPose_L(nn.Module):
 
@@ -32,6 +43,8 @@ class TokenPose_L(nn.Module):
 
         print(cfg.MODEL)
         ##################################################
+        self.trainning_mode = RunningMode.PreTrain
+        self.mask_mode =
         self.pre_feature = HRNET_base(cfg,**kwargs)
         self.transformer = TokenPose_L_base(feature_size=[cfg.MODEL.IMAGE_SIZE[1]//4,cfg.MODEL.IMAGE_SIZE[0]//4],patch_size=[cfg.MODEL.PATCH_SIZE[1],cfg.MODEL.PATCH_SIZE[0]],
                             num_keypoints = cfg.MODEL.NUM_JOINTS,dim =cfg.MODEL.DIM,
@@ -47,7 +60,10 @@ class TokenPose_L(nn.Module):
 
     def forward(self, x):
         x = self.pre_feature(x)
-        x = self.transformer(x)
+        if self.trainning_mode == RunningMode.PreTrain:
+            x = self.transformer(x)
+        elif self.trainning_mode == RunningMode.FineTuning:
+            x = self.transformer(x)
         return x
 
     def init_weights(self, pretrained='', cfg=None):
