@@ -44,26 +44,35 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
         data_time.update(time.time() - end)
         if running_mode == RunningMode.GatePreTrain:
             outputs_anchor = model(input)
+            outputs_anchor= outputs_anchor.detach()
+            optimizer.zero_grad()
+
             target = target.cuda(non_blocking=True)
             target_weight = target_weight.cuda(non_blocking=True)
             # outputs_anchor->accuracy
             patch_size = 4
-            pred_anchor_, _ = get_max_preds(outputs_anchor)
+            pred_anchor_, _ = get_max_preds(outputs_anchor.cpu().numpy())
             pred_anchor_=pred_anchor_.astype(int)
-            pred_anchor_=torch.from_numpy(pred_anchor_)
-            mask_ratio = 0.6
+            # pred_anchor_=torch.from_numpy(pred_anchor_).cuda()
+            mask_ratio = 0.6 #1 ALL MASK
+
 
             for k in range(10):
                 indice= random.sample(range(pred_anchor_.shape[1]), int(pred_anchor_.shape[1]*mask_ratio))
                 pred_anchor = np.take(pred_anchor_,indice,axis=1)
 
-                mask_ = torch.ones(pred_anchor_.shape[0],int(pred_anchor_.shape[1]*mask_ratio),pred_anchor_.shape[2],pred_anchor_.shape[3])
-                mask_.scatter_(1, torch.LongTensor(pred_anchor), 0)
-                for p in range(pred_anchor.shape[0]):
+                mask_ = torch.ones(input.shape[0],input.shape[1],outputs_anchor.shape[2],outputs_anchor.shape[3])
+                # mask_.scatter_(1, torch.LongTensor(pred_anchor), 0)
+                for batch_num in range(pred_anchor.shape[0]):
+                    # indice = []
                     for q in range(pred_anchor.shape[1]):
-                        indice = []
-                        indice.append(pred_anchor[p, q])
-                    mask_.index_put_(indice, torch.tensor(0))
+                        # indice.append(torch.tensor(pred_anchor[batch_num, q]))
+                        mask_label = pred_anchor[batch_num, q]
+
+                        mask_[batch_num,0][mask_label[0],mask_label[1]]=0
+                        mask_[batch_num,1][mask_label[0],mask_label[1]]=0
+                        mask_[batch_num,2][mask_label[0],mask_label[1]]=0
+
 
                 m = torch.nn.Upsample(scale_factor=patch_size, mode='nearest')
                 mask = m(mask_)
@@ -97,27 +106,27 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
                 batch_time.update(time.time() - end)
                 end = time.time()
 
-            if i % config.PRINT_FREQ == 0:
-                msg = 'Epoch: [{0}][{1}/{2}]\t' \
-                      'Time {batch_time.val:.3f}s ({batch_time.avg:.3f}s)\t' \
-                      'Speed {speed:.1f} samples/s\t' \
-                      'Data {data_time.val:.3f}s ({data_time.avg:.3f}s)\t' \
-                      'Loss {loss.val:.5f} ({loss.avg:.5f})\t' \
-                      'Accuracy {acc.val:.3f} ({acc.avg:.3f})'.format(
-                    epoch, i, len(train_loader), batch_time=batch_time,
-                    speed=input.size(0) / batch_time.val,
-                    data_time=data_time, loss=losses, acc=acc)
-                logger.info(msg)
+                if i % config.PRINT_FREQ == 0:
+                    msg = 'Epoch: [{0}][{1}/{2}]\t' \
+                          'Time {batch_time.val:.3f}s ({batch_time.avg:.3f}s)\t' \
+                          'Speed {speed:.1f} samples/s\t' \
+                          'Data {data_time.val:.3f}s ({data_time.avg:.3f}s)\t' \
+                          'Loss {loss.val:.5f} ({loss.avg:.5f})\t' \
+                          'Accuracy {acc.val:.3f} ({acc.avg:.3f})'.format(
+                        epoch, i, len(train_loader), batch_time=batch_time,
+                        speed=input.size(0) / batch_time.val,
+                        data_time=data_time, loss=losses, acc=acc)
+                    logger.info(msg)
 
-                writer = writer_dict['writer']
-                global_steps = writer_dict['train_global_steps']
-                writer.add_scalar('train_loss', losses.val, global_steps)
-                writer.add_scalar('train_acc', acc.val, global_steps)
-                writer_dict['train_global_steps'] = global_steps + 1
+                    writer = writer_dict['writer']
+                    global_steps = writer_dict['train_global_steps']
+                    writer.add_scalar('train_loss', losses.val, global_steps)
+                    writer.add_scalar('train_acc', acc.val, global_steps)
+                    writer_dict['train_global_steps'] = global_steps + 1
 
-                prefix = '{}_{}'.format(os.path.join(output_dir, 'train'), i)
-                save_debug_images(config, input, meta, target, pred * 4, output,
-                                  prefix)
+                    prefix = '{}_{}'.format(os.path.join(output_dir, 'train'), i)
+                    save_debug_images(config, input_replace, meta, target, pred * 4, output_replace,
+                                      prefix)
                 # pred_anchor upsample
 
 

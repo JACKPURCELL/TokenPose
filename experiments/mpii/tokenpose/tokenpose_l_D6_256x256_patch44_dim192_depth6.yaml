@@ -8,7 +8,8 @@ GPUS: (0,)
 OUTPUT_DIR: 'output'
 LOG_DIR: 'log'
 WORKERS: 24
-PRINT_FREQ: 100
+PRINT_FREQ: 1
+
 DATASET:
   COLOR_RGB: true
   DATASET: mpii
@@ -16,7 +17,7 @@ DATASET:
   FLIP: true
   NUM_JOINTS_HALF_BODY: 8
   PROB_HALF_BODY: -1.0
-  ROOT: '/media/ljc/ljc/MPII'
+  ROOT: '/home/zhou/MPIIdata/'
   ROT_FACTOR: 30
   SCALE_FACTOR: 0.25
   TEST_SET: test
@@ -25,7 +26,7 @@ MODEL:
   INIT_WEIGHTS: true
   NAME: pose_tokenpose_l
   NUM_JOINTS: 16
-  PRETRAINED: '/home/ljc/Github/TokenPose/pretrained/imagenet/hrnet_w48-8ef0771d.pth'
+  PRETRAINED: '/home/zhou/TokenPose/pretrain/imagenet/hrnet_w48-8ef0771d.pth'
   TARGET_TYPE: gaussian
   BASE_CHANNEL: 48
   HIDDEN_HEATMAP_DIM: 384
@@ -84,10 +85,10 @@ MODEL:
 LOSS:
   USE_TARGET_WEIGHT: true
 TRAIN:
-  BATCH_SIZE_PER_GPU: 2
+  BATCH_SIZE_PER_GPU: 70
   SHUFFLE: true
   BEGIN_EPOCH: 0
-  END_EPOCH: 300
+  END_EPOCH: 400
   OPTIMIZER: adam
   LR: 0.001
   LR_FACTOR: 0.1
@@ -100,7 +101,7 @@ TRAIN:
   MOMENTUM: 0.9
   NESTEROV: false
 TEST:
-  BATCH_SIZE_PER_GPU: 2
+  BATCH_SIZE_PER_GPU: 70
   MODEL_FILE: ''
   FLIP_TEST: true
   POST_PROCESS: true

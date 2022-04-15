@@ -44,7 +44,7 @@ class TokenPose_L(nn.Module):
         print(cfg.MODEL)
         ##################################################
         self.trainning_mode = RunningMode.PreTrain
-        self.mask_mode =
+
         self.pre_feature = HRNET_base(cfg,**kwargs)
         self.transformer = TokenPose_L_base(feature_size=[cfg.MODEL.IMAGE_SIZE[1]//4,cfg.MODEL.IMAGE_SIZE[0]//4],patch_size=[cfg.MODEL.PATCH_SIZE[1],cfg.MODEL.PATCH_SIZE[0]],
                             num_keypoints = cfg.MODEL.NUM_JOINTS,dim =cfg.MODEL.DIM,
