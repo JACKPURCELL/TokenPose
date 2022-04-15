@@ -16,6 +16,7 @@ import os
 import numpy as np
 import torch
 import torch.nn as nn
+import torchvision
 
 from core.evaluate import accuracy
 from core.inference import get_final_preds
@@ -54,7 +55,7 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
             pred_anchor_, _ = get_max_preds(outputs_anchor.cpu().numpy())
             pred_anchor_=pred_anchor_.astype(int)
             # pred_anchor_=torch.from_numpy(pred_anchor_).cuda()
-            mask_ratio = 0.6 #1 ALL MASK
+            mask_ratio = 1 #1 ALL MASK
 
 
             for k in range(10):
@@ -69,13 +70,18 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
                         # indice.append(torch.tensor(pred_anchor[batch_num, q]))
                         mask_label = pred_anchor[batch_num, q]
 
-                        mask_[batch_num,0][mask_label[0],mask_label[1]]=0
-                        mask_[batch_num,1][mask_label[0],mask_label[1]]=0
-                        mask_[batch_num,2][mask_label[0],mask_label[1]]=0
+                        mask_[batch_num,0][mask_label[1],mask_label[0]]=0
+                        mask_[batch_num,1][mask_label[1],mask_label[0]]=0
+                        mask_[batch_num,2][mask_label[1],mask_label[0]]=0
 
 
                 m = torch.nn.Upsample(scale_factor=patch_size, mode='nearest')
                 mask = m(mask_)
+                # mask = mask.T
+                # for a in range(mask.shape[0]):
+                #     for b in range(mask.shape[1]):
+                #         torchvision.transforms.functional.rotate(mask[a,b],270)
+                # mask = torch.rot90(mask, 1, [2, 3])
                 input_replace = torch.mul(input,mask)
                 outputs_replace = model(input_replace)
 
