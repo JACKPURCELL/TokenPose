@@ -50,6 +50,8 @@ def parse_args():
                         help="Modify config options using the command-line",
                         default=None,
                         nargs=argparse.REMAINDER)
+    parser.add_argument('--mode', type=str, default='Pretrain',
+                                 help='Mask Gate mode')
 
     # philly
     parser.add_argument('--modelDir',
