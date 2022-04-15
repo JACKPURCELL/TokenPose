@@ -59,8 +59,11 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
 
                 mask_ = torch.ones(pred_anchor_.shape[0],int(pred_anchor_.shape[1]*mask_ratio),pred_anchor_.shape[2],pred_anchor_.shape[3])
                 mask_.scatter_(1, torch.LongTensor(pred_anchor), 0)
-                for p in range(pred_anchor_.shape[0]):
-                    mask_.index_put_([pred_anchor[p,0],pred_anchor[p,1]], torch.tensor(0))
+                for p in range(pred_anchor.shape[0]):
+                    for q in range(pred_anchor.shape[1]):
+                        indice = []
+                        indice.append(pred_anchor[p, q])
+                    mask_.index_put_(indice, torch.tensor(0))
 
                 m = torch.nn.Upsample(scale_factor=patch_size, mode='nearest')
                 mask = m(mask_)
