@@ -4,7 +4,7 @@ CUDNN:
   DETERMINISTIC: false
   ENABLED: true
 DATA_DIR: ''
-GPUS: (0,1,2,3)
+GPUS: (0,)
 OUTPUT_DIR: 'output'
 LOG_DIR: 'log'
 WORKERS: 24
@@ -17,16 +17,16 @@ DATASET:
   FLIP: true
   NUM_JOINTS_HALF_BODY: 8
   PROB_HALF_BODY: 0.3
-  ROOT: '/data/dataset/COCO_2017'
+  ROOT: '/home/zhou/OCHuman/'
   ROT_FACTOR: 45
   SCALE_FACTOR: 0.35
-  TEST_SET: 'val2017'
-  TRAIN_SET: 'train2017'
+  TEST_SET: 'test'
+  TRAIN_SET: 'val'
 MODEL:
   INIT_WEIGHTS: true
   NAME: pose_tokenpose_l
   NUM_JOINTS: 17
-  PRETRAINED: '/data/pretrained/imagenet/hrnet_w48-8ef0771d.pth'
+  PRETRAINED: '/home/zhou/NewTokenpose/TokenPose/output/mpii/pose_tokenpose_l/tokenpose_l_D6_256x256_patch44_dim192_depth6/checkpoint.pth'
   TARGET_TYPE: gaussian
   BASE_CHANNEL: 48
   HIDDEN_HEATMAP_DIM: 384
@@ -85,7 +85,7 @@ MODEL:
 LOSS:
   USE_TARGET_WEIGHT: true
 TRAIN:
-  BATCH_SIZE_PER_GPU: 16
+  BATCH_SIZE_PER_GPU: 64
   SHUFFLE: true
   BEGIN_EPOCH: 0
   END_EPOCH: 300

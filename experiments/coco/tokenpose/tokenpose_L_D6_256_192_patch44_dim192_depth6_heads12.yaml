@@ -12,38 +12,38 @@ PRINT_FREQ: 100
 
 DATASET:
   COLOR_RGB: true
-  DATASET: mpii
+  DATASET: 'coco'
   DATA_FORMAT: jpg
   FLIP: true
   NUM_JOINTS_HALF_BODY: 8
-  PROB_HALF_BODY: -1.0
-  ROOT: '/home/zhou/MPIIdata/'
-  ROT_FACTOR: 30
-  SCALE_FACTOR: 0.25
-  TEST_SET: test
-  TRAIN_SET: train
+  PROB_HALF_BODY: 0.3
+  ROOT: '/home/zhou/COCO/'
+  ROT_FACTOR: 45
+  SCALE_FACTOR: 0.35
+  TEST_SET: 'val2017'
+  TRAIN_SET: 'train2017'
 MODEL:
   INIT_WEIGHTS: true
   NAME: pose_tokenpose_l
-  NUM_JOINTS: 16
+  NUM_JOINTS: 17
   PRETRAINED: '/home/zhou/NewTokenpose/TokenPose/output/mpii/pose_tokenpose_l/tokenpose_l_D6_256x256_patch44_dim192_depth6/checkpoint.pth'
   TARGET_TYPE: gaussian
   BASE_CHANNEL: 48
   HIDDEN_HEATMAP_DIM: 384
-  TRANSFORMER_DEPTH: 2
-  TRANSFORMER_HEADS: 8
+  TRANSFORMER_DEPTH: 8
+  TRANSFORMER_HEADS: 12
   TRANSFORMER_MLP_RATIO: 3
   POS_EMBEDDING_TYPE: 'sine-full'
   INIT: true
   DIM: 192 # 4*4*3
   PATCH_SIZE:
+  - 3
   - 4
-  - 4  
   IMAGE_SIZE:
-  - 256
+  - 192
   - 256
   HEATMAP_SIZE:
-  - 64
+  - 48
   - 64
   SIGMA: 2
   EXTRA:
@@ -85,7 +85,7 @@ MODEL:
 LOSS:
   USE_TARGET_WEIGHT: true
 TRAIN:
-  BATCH_SIZE_PER_GPU: 2
+  BATCH_SIZE_PER_GPU: 48
   SHUFFLE: true
   BEGIN_EPOCH: 0
   END_EPOCH: 300
@@ -101,8 +101,15 @@ TRAIN:
   MOMENTUM: 0.9
   NESTEROV: false
 TEST:
-  BATCH_SIZE_PER_GPU: 2
+  BATCH_SIZE_PER_GPU: 16
+  COCO_BBOX_FILE: '/data/dataset/COCO_2017/COCO_val2017_detections_AP_H_56_person.json'
+  BBOX_THRE: 1.0
+  IMAGE_THRE: 0.0
+  IN_VIS_THRE: 0.2
   MODEL_FILE: ''
+  NMS_THRE: 1.0
+  OKS_THRE: 0.9
+  USE_GT_BBOX: true
   FLIP_TEST: true
   POST_PROCESS: true
   BLUR_KERNEL: 11

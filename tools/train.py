@@ -74,6 +74,7 @@ def parse_args():
 
 
 def main():
+    torch.cuda.empty_cache()
     args = parse_args()
     update_config(cfg, args)
 
@@ -161,7 +162,7 @@ def main():
     checkpoint_file = os.path.join(
         final_output_dir, 'checkpoint.pth'
     )
-
+    print("os.path.exists(checkpoint_file)",os.path.exists(checkpoint_file),checkpoint_file)
     if cfg.AUTO_RESUME and os.path.exists(checkpoint_file):
         logger.info("=> loading checkpoint '{}'".format(checkpoint_file))
         checkpoint = torch.load(checkpoint_file)

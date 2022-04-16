@@ -114,10 +114,13 @@ class COCODataset(JointsDataset):
         """ self.root / annotations / person_keypoints_train2017.json """
         prefix = 'person_keypoints' \
             if 'test' not in self.image_set else 'image_info'
+        # prefix = 'val' \
+        #     if 'test' not in self.image_set else 'test'
         return os.path.join(
             self.root,
             'annotations',
             prefix + '_' + self.image_set + '.json'
+            # "ochuman_coco_format_"+prefix+"_range_0.00_1.00"+ '.json'
         )
 
     def _load_image_set_index(self):
@@ -232,6 +235,7 @@ class COCODataset(JointsDataset):
     def image_path_from_index(self, index):
         """ example: images / train2017 / 000000119993.jpg """
         file_name = '%012d.jpg' % index
+        # file_name = '%06d.jpg' % index
         if '2014' in self.image_set:
             file_name = 'COCO_%s_' % self.image_set + file_name
 
@@ -241,7 +245,8 @@ class COCODataset(JointsDataset):
 
         image_path = os.path.join(
             self.root, 'images', data_name, file_name)
-
+        # image_path = os.path.join(
+        #     self.root, 'images', file_name)
         return image_path
 
     def _load_coco_person_detection_results(self):
@@ -313,6 +318,7 @@ class COCODataset(JointsDataset):
                 'area': all_boxes[idx][4],
                 'score': all_boxes[idx][5],
                 'image': int(img_path[idx][-16:-4])
+                # 'image': int(img_path[idx][-10:-4])
             })
         # image x person x (keypoints)
         kpts = defaultdict(list)
