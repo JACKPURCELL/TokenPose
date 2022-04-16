@@ -32,6 +32,7 @@ from utils.utils import get_optimizer
 from utils.utils import save_checkpoint
 from utils.utils import create_logger
 from utils.utils import get_model_summary
+from utils.utils import RunningMode
 
 import dataset
 import models
@@ -49,6 +50,8 @@ def parse_args():
                         help="Modify config options using the command-line",
                         default=None,
                         nargs=argparse.REMAINDER)
+    parser.add_argument('--mode', type=str, default='Pretrain',
+                                 help='Mask Gate mode')
 
     # philly
     parser.add_argument('--modelDir',
@@ -76,6 +79,16 @@ def parse_args():
 def main():
     torch.cuda.empty_cache()
     args = parse_args()
+    if args.mode == 'Pretrain':
+        args.running_mode = RunningMode.GatePreTrain
+    if args.mode == 'Finetuning':
+        args.running_mode = RunningMode.FineTuning
+    if args.mode == 'Test':
+        args.running_mode = RunningMode.Test
+    if args.mode == 'Origin':
+        args.running_mode = RunningMode.BackboneTrain
+    if args.mode == 'BackboneTest':
+        args.running_mode = RunningMode.BackboneTest
     update_config(cfg, args)
 
     logger, final_output_dir, tb_log_dir = create_logger(
@@ -188,7 +201,7 @@ def main():
 
         # train for one epoch
         train(cfg, train_loader, model, criterion, optimizer, epoch,
-              final_output_dir, tb_log_dir, writer_dict)
+              final_output_dir, tb_log_dir, writer_dict,args.running_mode)
 
 
         # evaluate on validation set

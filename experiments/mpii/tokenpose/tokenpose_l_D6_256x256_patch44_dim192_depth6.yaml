@@ -7,8 +7,8 @@ DATA_DIR: ''
 GPUS: (0,)
 OUTPUT_DIR: 'output'
 LOG_DIR: 'log'
-WORKERS: 16
-PRINT_FREQ: 100
+WORKERS: 24
+PRINT_FREQ: 1
 
 DATASET:
   COLOR_RGB: true
@@ -26,7 +26,7 @@ MODEL:
   INIT_WEIGHTS: true
   NAME: pose_tokenpose_l
   NUM_JOINTS: 16
-  PRETRAINED: '/home/zhou/NewTokenpose/TokenPose/output/mpii/pose_tokenpose_l/tokenpose_l_D6_256x256_patch44_dim192_depth6/checkpoint.pth'
+  PRETRAINED: '/home/zhou/TokenPose/pretrain/imagenet/hrnet_w48-8ef0771d.pth'
   TARGET_TYPE: gaussian
   BASE_CHANNEL: 48
   HIDDEN_HEATMAP_DIM: 384
@@ -38,7 +38,7 @@ MODEL:
   DIM: 192 # 4*4*3
   PATCH_SIZE:
   - 4
-  - 4  
+  - 4
   IMAGE_SIZE:
   - 256
   - 256
@@ -85,10 +85,10 @@ MODEL:
 LOSS:
   USE_TARGET_WEIGHT: true
 TRAIN:
-  BATCH_SIZE_PER_GPU: 2
+  BATCH_SIZE_PER_GPU: 70
   SHUFFLE: true
   BEGIN_EPOCH: 0
-  END_EPOCH: 300
+  END_EPOCH: 400
   OPTIMIZER: adam
   LR: 0.001
   LR_FACTOR: 0.1
@@ -101,7 +101,7 @@ TRAIN:
   MOMENTUM: 0.9
   NESTEROV: false
 TEST:
-  BATCH_SIZE_PER_GPU: 2
+  BATCH_SIZE_PER_GPU: 70
   MODEL_FILE: ''
   FLIP_TEST: true
   POST_PROCESS: true

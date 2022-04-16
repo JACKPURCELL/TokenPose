@@ -16,18 +16,21 @@ import os
 import numpy as np
 import torch
 import torch.nn as nn
+import torchvision
 
 from core.evaluate import accuracy
 from core.inference import get_final_preds
 from utils.transforms import flip_back
 from utils.vis import save_debug_images
-
+from core.inference import get_max_preds
+import random
+from utils.utils import RunningMode
 
 logger = logging.getLogger(__name__)
 
 
 def train(config, train_loader, model, criterion, optimizer, epoch,
-          output_dir, tb_log_dir, writer_dict):
+          output_dir, tb_log_dir, writer_dict,running_mode):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -40,60 +43,163 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
     for i, (input, target, target_weight, meta) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
+        if running_mode == RunningMode.GatePreTrain:
+            outputs_anchor = model(input)
+            outputs_anchor= outputs_anchor.detach()
+            optimizer.zero_grad()
 
-        # compute output
-        outputs = model(input)
+            target = target.cuda(non_blocking=True)
+            target_weight = target_weight.cuda(non_blocking=True)
+            # outputs_anchor->accuracy
+            patch_size = 4
+            pred_anchor_, _ = get_max_preds(outputs_anchor.cpu().numpy())
+            pred_anchor_=pred_anchor_.astype(int)
+            # pred_anchor_=torch.from_numpy(pred_anchor_).cuda()
+            mask_ratio = 1 #1 ALL MASK
 
-        target = target.cuda(non_blocking=True)
-        target_weight = target_weight.cuda(non_blocking=True)
 
-        if isinstance(outputs, list):
-            loss = criterion(outputs[0], target, target_weight)
-            for output in outputs[1:]:
-                loss += criterion(output, target, target_weight)
+            for k in range(10):
+                indice= random.sample(range(pred_anchor_.shape[1]), int(pred_anchor_.shape[1]*mask_ratio))
+                pred_anchor = np.take(pred_anchor_,indice,axis=1)
+
+                mask_ = torch.ones(input.shape[0],input.shape[1],outputs_anchor.shape[2],outputs_anchor.shape[3])
+                # mask_.scatter_(1, torch.LongTensor(pred_anchor), 0)
+                for batch_num in range(pred_anchor.shape[0]):
+                    # indice = []
+                    for q in range(pred_anchor.shape[1]):
+                        # indice.append(torch.tensor(pred_anchor[batch_num, q]))
+                        mask_label = pred_anchor[batch_num, q]
+
+                        mask_[batch_num,0][mask_label[1],mask_label[0]]=0
+                        mask_[batch_num,1][mask_label[1],mask_label[0]]=0
+                        mask_[batch_num,2][mask_label[1],mask_label[0]]=0
+
+
+                m = torch.nn.Upsample(scale_factor=patch_size, mode='nearest')
+                mask = m(mask_)
+                # mask = mask.T
+                # for a in range(mask.shape[0]):
+                #     for b in range(mask.shape[1]):
+                #         torchvision.transforms.functional.rotate(mask[a,b],270)
+                # mask = torch.rot90(mask, 1, [2, 3])
+                input_replace = torch.mul(input,mask)
+                outputs_replace = model(input_replace)
+
+                if isinstance(outputs_replace, list):
+                    loss = criterion(outputs_replace[0], outputs_anchor[0], target_weight)
+                    for output_replace,output_anchor in outputs_replace[1:],outputs_anchor[1:]:
+                        loss += criterion(output_replace, output_anchor, target_weight)
+                else:
+                    output_replace = outputs_replace
+                    output_anchor = outputs_anchor
+                    loss = criterion(output_replace, output_anchor, target_weight)
+
+                # loss = criterion(output, target, target_weight)
+
+                # compute gradient and do update step
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+                # measure accuracy and record loss
+                losses.update(loss.item(), input.size(0))
+
+                _, avg_acc, cnt, pred = accuracy(output_replace.detach().cpu().numpy(),
+                                                 target.detach().cpu().numpy())
+                acc.update(avg_acc, cnt)
+
+                # measure elapsed time
+                batch_time.update(time.time() - end)
+                end = time.time()
+
+                if i % config.PRINT_FREQ == 0:
+                    msg = 'Epoch: [{0}][{1}/{2}]\t' \
+                          'Time {batch_time.val:.3f}s ({batch_time.avg:.3f}s)\t' \
+                          'Speed {speed:.1f} samples/s\t' \
+                          'Data {data_time.val:.3f}s ({data_time.avg:.3f}s)\t' \
+                          'Loss {loss.val:.5f} ({loss.avg:.5f})\t' \
+                          'Accuracy {acc.val:.3f} ({acc.avg:.3f})'.format(
+                        epoch, i, len(train_loader), batch_time=batch_time,
+                        speed=input.size(0) / batch_time.val,
+                        data_time=data_time, loss=losses, acc=acc)
+                    logger.info(msg)
+
+                    writer = writer_dict['writer']
+                    global_steps = writer_dict['train_global_steps']
+                    writer.add_scalar('train_loss', losses.val, global_steps)
+                    writer.add_scalar('train_acc', acc.val, global_steps)
+                    writer_dict['train_global_steps'] = global_steps + 1
+
+                    prefix = '{}_{}'.format(os.path.join(output_dir, 'train'), i)
+                    save_debug_images(config, input_replace, meta, target, pred * 4, output_replace,
+                                      prefix)
+                # pred_anchor upsample
+
+
+            # pred_anchor reshape
+            # replace input
+            # pred, _ = get_max_preds(outputs_anchor)
+            #     pred_anchor =
+                # pred from1 random
+                #  input to zero
+                # newinput
+
+                # outputs_replace = model(replace)
+                #      loss
         else:
-            output = outputs
-            loss = criterion(output, target, target_weight)
+            # compute output
+            outputs = model(input)
 
-        # loss = criterion(output, target, target_weight)
+            target = target.cuda(non_blocking=True)
+            target_weight = target_weight.cuda(non_blocking=True)
 
-        # compute gradient and do update step
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+            if isinstance(outputs, list):
+                loss = criterion(outputs[0], target, target_weight)
+                for output in outputs[1:]:
+                    loss += criterion(output, target, target_weight)
+            else:
+                output = outputs
+                loss = criterion(output, target, target_weight)
 
-        # measure accuracy and record loss
-        losses.update(loss.item(), input.size(0))
+                # loss = criterion(output, target, target_weight)
 
-        _, avg_acc, cnt, pred = accuracy(output.detach().cpu().numpy(),
-                                         target.detach().cpu().numpy())
-        acc.update(avg_acc, cnt)
+                # compute gradient and do update step
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
 
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
+                # measure accuracy and record loss
+                losses.update(loss.item(), input.size(0))
 
-        if i % config.PRINT_FREQ == 0:
-            msg = 'Epoch: [{0}][{1}/{2}]\t' \
-                  'Time {batch_time.val:.3f}s ({batch_time.avg:.3f}s)\t' \
-                  'Speed {speed:.1f} samples/s\t' \
-                  'Data {data_time.val:.3f}s ({data_time.avg:.3f}s)\t' \
-                  'Loss {loss.val:.5f} ({loss.avg:.5f})\t' \
-                  'Accuracy {acc.val:.3f} ({acc.avg:.3f})'.format(
-                      epoch, i, len(train_loader), batch_time=batch_time,
-                      speed=input.size(0)/batch_time.val,
-                      data_time=data_time, loss=losses, acc=acc)
-            logger.info(msg)
+                _, avg_acc, cnt, pred = accuracy(output.detach().cpu().numpy(),
+                                                 target.detach().cpu().numpy())
+                acc.update(avg_acc, cnt)
 
-            writer = writer_dict['writer']
-            global_steps = writer_dict['train_global_steps']
-            writer.add_scalar('train_loss', losses.val, global_steps)
-            writer.add_scalar('train_acc', acc.val, global_steps)
-            writer_dict['train_global_steps'] = global_steps + 1
+                # measure elapsed time
+                batch_time.update(time.time() - end)
+                end = time.time()
 
-            prefix = '{}_{}'.format(os.path.join(output_dir, 'train'), i)
-            save_debug_images(config, input, meta, target, pred*4, output,
-                              prefix)
+                if i % config.PRINT_FREQ == 0:
+                    msg = 'Epoch: [{0}][{1}/{2}]\t' \
+                          'Time {batch_time.val:.3f}s ({batch_time.avg:.3f}s)\t' \
+                          'Speed {speed:.1f} samples/s\t' \
+                          'Data {data_time.val:.3f}s ({data_time.avg:.3f}s)\t' \
+                          'Loss {loss.val:.5f} ({loss.avg:.5f})\t' \
+                          'Accuracy {acc.val:.3f} ({acc.avg:.3f})'.format(
+                              epoch, i, len(train_loader), batch_time=batch_time,
+                              speed=input.size(0)/batch_time.val,
+                              data_time=data_time, loss=losses, acc=acc)
+                    logger.info(msg)
+
+                    writer = writer_dict['writer']
+                    global_steps = writer_dict['train_global_steps']
+                    writer.add_scalar('train_loss', losses.val, global_steps)
+                    writer.add_scalar('train_acc', acc.val, global_steps)
+                    writer_dict['train_global_steps'] = global_steps + 1
+
+                    prefix = '{}_{}'.format(os.path.join(output_dir, 'train'), i)
+                    save_debug_images(config, input, meta, target, pred*4, output,
+                                      prefix)
 
 
 def validate(config, val_loader, val_dataset, model, criterion, output_dir,
