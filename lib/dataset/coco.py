@@ -23,7 +23,6 @@ from dataset.JointsDataset import JointsDataset
 from nms.nms import oks_nms
 from nms.nms import soft_oks_nms
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -48,10 +47,15 @@ class COCODataset(JointsDataset):
         15: "left_ankle",
         16: "right_ankle"
     },
+    [
+                1., 1., 1.2, 1.2,
+                1.5, 1.5, 1., 1., 1.2, 1.2, 1.5, 1.5, 1., 1.
+            ],
 	"skeleton": [
         [16,14],[14,12],[17,15],[15,13],[12,13],[6,12],[7,13], [6,7],[6,8],
         [7,9],[8,10],[9,11],[2,3],[1,2],[1,3],[2,4],[3,5],[4,6],[5,7]]
     '''
+
     def __init__(self, cfg, root, image_set, is_train, transform=None):
         super().__init__(cfg, root, image_set, is_train, transform)
         self.nms_thre = cfg.TEST.NMS_THRE
@@ -87,18 +91,29 @@ class COCODataset(JointsDataset):
         self.image_set_index = self._load_image_set_index()
         self.num_images = len(self.image_set_index)
         logger.info('=> num_images: {}'.format(self.num_images))
+        loaded_cate = self.coco.dataset['categories']
+        # self.num_joints = len(loaded_cate[0]['keypoints'])
+        self.num_joints = 14
+        # self.flip_pairs = loaded_cate[0]['skeleton']
 
-        self.num_joints = 17
-        self.flip_pairs = [[1, 2], [3, 4], [5, 6], [7, 8],
-                           [9, 10], [11, 12], [13, 14], [15, 16]]
+        self.flip_pairs = [[12, 13], [13, 0], [13, 1], [0, 2], [2, 4], [1, 3], [3, 5], [13, 7], [13, 6], [7, 9],
+                           [9, 11], [6, 8], [8, 10]]
+        # self.flip_pairs = [[1, 2], [3, 4], [5, 6], [7, 8],
+        #                    [9, 10], [11, 12], [13, 14], [15, 16]]
         self.parent_ids = None
-        self.upper_body_ids = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
-        self.lower_body_ids = (11, 12, 13, 14, 15, 16)
+        self.upper_body_ids = (0, 1, 2, 3, 4, 5, 12, 13)
+        self.lower_body_ids = (6, 7, 8, 9, 10, 11)
+        # self.upper_body_ids = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+        # self.lower_body_ids = (11, 12, 13, 14, 15, 16)
 
         self.joints_weight = np.array(
+            # [
+            #     1., 1., 1., 1., 1., 1., 1., 1.2, 1.2,
+            #     1.5, 1.5, 1., 1., 1.2, 1.2, 1.5, 1.5
+            # ],
             [
-                1., 1., 1., 1., 1., 1., 1., 1.2, 1.2,
-                1.5, 1.5, 1., 1., 1.2, 1.2, 1.5, 1.5
+                1., 1., 1.2, 1.2,
+                1.5, 1.5, 1., 1., 1.2, 1.2, 1.5, 1.5, 1., 1.
             ],
             dtype=np.float32
         ).reshape((self.num_joints, 1))
@@ -116,11 +131,14 @@ class COCODataset(JointsDataset):
             if 'test' not in self.image_set else 'image_info'
         # prefix = 'val' \
         #     if 'test' not in self.image_set else 'test'
+        # prefix = 'trainval' \
+        #       if 'test' not in self.image_set else 'test'
         return os.path.join(
             self.root,
             'annotations',
             prefix + '_' + self.image_set + '.json'
             # "ochuman_coco_format_"+prefix+"_range_0.00_1.00"+ '.json'
+            # 'crowdpose_'+ prefix +'.json'
         )
 
     def _load_image_set_index(self):
@@ -170,8 +188,9 @@ class COCODataset(JointsDataset):
             y1 = np.max((0, y))
             x2 = np.min((width - 1, x1 + np.max((0, w - 1))))
             y2 = np.min((height - 1, y1 + np.max((0, h - 1))))
-            if obj['area'] > 0 and x2 >= x1 and y2 >= y1:
-                obj['clean_bbox'] = [x1, y1, x2-x1+1, y2-y1+1]
+            # if obj['area'] > 0 and x2 >= x1 and y2 >= y1:
+            if x2 >= x1 and y2 >= y1:
+                obj['clean_bbox'] = [x1, y1, x2 - x1 + 1, y2 - y1 + 1]
                 valid_objs.append(obj)
         objs = valid_objs
 

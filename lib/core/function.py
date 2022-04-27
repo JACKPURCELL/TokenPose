@@ -8,7 +8,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
- 
+
 import time
 import logging
 import os
@@ -29,8 +29,8 @@ from utils.utils import RunningMode
 logger = logging.getLogger(__name__)
 
 
-def train(config, train_loader, model, criterion, optimizer, epoch,
-          output_dir, tb_log_dir, writer_dict,running_mode):
+def train(config, train_loader, model, teacher, criterion, optimizer, epoch,
+          output_dir, tb_log_dir, writer_dict, running_mode):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -39,43 +39,49 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
     # switch to train mode
     model.train()
 
+    if running_mode == RunningMode.GatePreTrain:
+        for n, p in model.named_parameters():
+            if 'pre_feature' in n:
+                p.requires_grad = False
+            else:
+                p.requires_grad = True
     end = time.time()
     for i, (input, target, target_weight, meta) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
         if running_mode == RunningMode.GatePreTrain:
-            outputs_anchor = model(input)
+            outputs_anchor = teacher(input)
             outputs_anchor= outputs_anchor.detach()
             optimizer.zero_grad()
-
+            mask_base = torch.ones(outputs_anchor.shape[0], outputs_anchor.shape[1], int(outputs_anchor.shape[2] / 4),
+                                   int(outputs_anchor.shape[3] / 4))
             target = target.cuda(non_blocking=True)
             target_weight = target_weight.cuda(non_blocking=True)
             # outputs_anchor->accuracy
-            patch_size = 4
+            patch_size = 16
             pred_anchor_, _ = get_max_preds(outputs_anchor.cpu().numpy())
             pred_anchor_=pred_anchor_.astype(int)
             # pred_anchor_=torch.from_numpy(pred_anchor_).cuda()
-            mask_ratio = 1 #1 ALL MASK
+            mask_ratio = 0.6 #1 ALL MASK
 
+            all_positive_mask = mask_base.clone().detach()
+            for batch_num in range(pred_anchor_.shape[0]):
+                for q in range(pred_anchor_.shape[1]):
+                    mask_label = pred_anchor_[batch_num, q]
+                    all_positive_mask[batch_num, :, int(mask_label[1] / 4), int(mask_label[0] / 4)] = 0
 
-            for k in range(10):
-                indice= random.sample(range(pred_anchor_.shape[1]), int(pred_anchor_.shape[1]*mask_ratio))
-                pred_anchor = np.take(pred_anchor_,indice,axis=1)
-
-                mask_ = torch.ones(input.shape[0],input.shape[1],outputs_anchor.shape[2],outputs_anchor.shape[3])
+            m = torch.nn.Upsample(scale_factor=4 * patch_size, mode='nearest')
+            mm = torch.nn.Upsample(scale_factor=4, mode='nearest')
+            for k in range(3):
+                indices = random.sample(range(pred_anchor_.shape[1]), int(pred_anchor_.shape[1] * mask_ratio))
+                pred_anchor = np.take(pred_anchor_, indices,axis=1)
+                mask_ = torch.ones(input.shape[0],input.shape[1],int(outputs_anchor.shape[2]/patch_size),int(outputs_anchor.shape[3]/patch_size))
+                # mask_ = torch.ones(input.shape[0],input.shape[1],outputs_anchor.shape[2],outputs_anchor.shape[3])
                 # mask_.scatter_(1, torch.LongTensor(pred_anchor), 0)
                 for batch_num in range(pred_anchor.shape[0]):
-                    # indice = []
                     for q in range(pred_anchor.shape[1]):
-                        # indice.append(torch.tensor(pred_anchor[batch_num, q]))
                         mask_label = pred_anchor[batch_num, q]
-
-                        mask_[batch_num,0][mask_label[1],mask_label[0]]=0
-                        mask_[batch_num,1][mask_label[1],mask_label[0]]=0
-                        mask_[batch_num,2][mask_label[1],mask_label[0]]=0
-
-
-                m = torch.nn.Upsample(scale_factor=patch_size, mode='nearest')
+                        mask_[batch_num, :, int(mask_label[1]/patch_size), int(mask_label[0]/patch_size)] = 0
                 mask = m(mask_)
                 # mask = mask.T
                 # for a in range(mask.shape[0]):
@@ -85,14 +91,31 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
                 input_replace = torch.mul(input,mask)
                 outputs_replace = model(input_replace)
 
+                outputs_pred = outputs_replace.detach()
+                pred_positive_, _ = get_max_preds(outputs_pred.cpu().numpy())
+                pred_positive_ = pred_positive_.astype(int)
+                pred_positive_mask = mask_base.clone().detach()
+                for batch_num in range(pred_positive_.shape[0]):
+                    for q in range(pred_positive_.shape[1]):
+                        mask_label = pred_positive_[batch_num, q]
+                        pred_positive_mask[batch_num, :, int(mask_label[1] / 4), int(mask_label[0] / 4)] = 0
+
+                weight_mask = torch.logical_xor(all_positive_mask, pred_positive_mask)
+                weight_mask = weight_mask * 9
+                weight_mask = weight_mask + 1
+                weight_mask = weight_mask.type(torch.FloatTensor)
+
+                weight_mask = mm(weight_mask)
+                weight_mask = weight_mask.to('cuda')
+
                 if isinstance(outputs_replace, list):
-                    loss = criterion(outputs_replace[0], outputs_anchor[0], target_weight)
-                    for output_replace,output_anchor in outputs_replace[1:],outputs_anchor[1:]:
-                        loss += criterion(output_replace, output_anchor, target_weight)
+                    loss = criterion(outputs_replace[0], outputs_anchor[0], target_weight, weight_mask[0])
+                    for output_replace,output_anchor, single_weight_mask in outputs_replace[1:],outputs_anchor[1:], weight_mask[1:]:
+                        loss += criterion(output_replace, output_anchor, target_weight, single_weight_mask)
                 else:
                     output_replace = outputs_replace
                     output_anchor = outputs_anchor
-                    loss = criterion(output_replace, output_anchor, target_weight)
+                    loss = criterion(output_replace, output_anchor, target_weight, weight_mask)
 
                 # loss = criterion(output, target, target_weight)
 

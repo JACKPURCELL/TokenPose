@@ -9,6 +9,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import copy
 import os
 import pprint
 import shutil
@@ -26,6 +27,7 @@ import _init_paths
 from config import cfg
 from config import update_config
 from core.loss import JointsMSELoss
+from core.loss import JointsWeightedMSELoss
 from core.function import train
 from core.function import validate
 from utils.utils import get_optimizer
@@ -129,9 +131,14 @@ def main():
     model = torch.nn.DataParallel(model, device_ids=cfg.GPUS).cuda()
 
     # define loss function (criterion) and optimizer
-    criterion = JointsMSELoss(
-        use_target_weight=cfg.LOSS.USE_TARGET_WEIGHT
-    ).cuda()
+    if args.running_mode == RunningMode.GatePreTrain:
+        criterion = JointsWeightedMSELoss(
+            use_target_weight=cfg.LOSS.USE_TARGET_WEIGHT
+        ).cuda()
+    else:
+        criterion = JointsMSELoss(
+            use_target_weight=cfg.LOSS.USE_TARGET_WEIGHT
+        ).cuda()
 
     # Data loading code
     normalize = transforms.Normalize(
@@ -194,29 +201,45 @@ def main():
     ) if cfg.TRAIN.LR_SCHEDULER is 'MultiStepLR' else torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, cfg.TRAIN.END_EPOCH, eta_min=cfg.TRAIN.LR_END, last_epoch=last_epoch)
 
-
+    teacher = copy.deepcopy(model)
     for epoch in range(begin_epoch, cfg.TRAIN.END_EPOCH):
+        if args.running_mode != RunningMode.GatePreTrain:
+            perf_indicator = validate(
+                cfg, valid_loader, valid_dataset, model, criterion,
+                final_output_dir, tb_log_dir, writer_dict
+            )
+            lr_scheduler.step()
+
+
+            if perf_indicator >= best_perf:
+                best_perf = perf_indicator
+                best_model = True
+            else:
+                best_model = False
+
         logger.info("=> current learning rate is {:.6f}".format(lr_scheduler.get_last_lr()[0]))
         # lr_scheduler.step()
 
         # train for one epoch
-        train(cfg, train_loader, model, criterion, optimizer, epoch,
+
+        train(cfg, train_loader, model, teacher, criterion, optimizer, epoch,
               final_output_dir, tb_log_dir, writer_dict,args.running_mode)
 
 
         # evaluate on validation set
-        perf_indicator = validate(
-            cfg, valid_loader, valid_dataset, model, criterion,
-            final_output_dir, tb_log_dir, writer_dict
-        )
-        lr_scheduler.step()
+        if args.running_mode != RunningMode.GatePreTrain:
+            perf_indicator = validate(
+                cfg, valid_loader, valid_dataset, model, criterion,
+                final_output_dir, tb_log_dir, writer_dict
+            )
+            lr_scheduler.step()
 
 
-        if perf_indicator >= best_perf:
-            best_perf = perf_indicator
-            best_model = True
-        else:
-            best_model = False
+            if perf_indicator >= best_perf:
+                best_perf = perf_indicator
+                best_model = True
+            else:
+                best_model = False
 
         logger.info('=> saving checkpoint to {}'.format(final_output_dir))
         save_checkpoint({
@@ -224,7 +247,7 @@ def main():
             'model': cfg.MODEL.NAME,
             'state_dict': model.state_dict(),
             'best_state_dict': model.module.state_dict(),
-            'perf': perf_indicator,
+            'perf': best_perf,
             'optimizer': optimizer.state_dict(),
         }, best_model, final_output_dir)
 

@@ -11,6 +11,7 @@ from __future__ import print_function
 import torch
 import torch.nn as nn
 
+
 class JointsMSELoss(nn.Module):
     def __init__(self, use_target_weight):
         super(JointsMSELoss, self).__init__()
@@ -34,6 +35,48 @@ class JointsMSELoss(nn.Module):
                 )
             else:
                 loss += 0.5 * self.criterion(heatmap_pred, heatmap_gt)
+
+        return loss / num_joints
+
+
+class WeightedMSELoss(nn.Module):
+    def __init__(self, reduction='mean'):
+        super(WeightedMSELoss, self).__init__()
+        self.reduction = reduction
+
+    def forward(self, output, target, weight):
+        if self.reduction == 'mean':
+            return torch.sum(torch.mul(weight, torch.pow(torch.sub(output, target), 2))).mean()
+        else:
+            return torch.sum(torch.mul(weight, torch.pow(torch.sub(output, target), 2)))
+
+
+class JointsWeightedMSELoss(nn.Module):
+    def __init__(self, use_target_weight):
+        super(JointsWeightedMSELoss, self).__init__()
+        self.criterion = WeightedMSELoss(reduction='mean')
+        self.use_target_weight = use_target_weight
+
+    def forward(self, output, target, target_weight, weight_masks):
+        batch_size = output.size(0)
+        num_joints = output.size(1)
+        heatmaps_pred = output.reshape((batch_size, num_joints, -1)).split(1, 1)
+        heatmaps_gt = target.reshape((batch_size, num_joints, -1)).split(1, 1)
+        heatmaps_weight = weight_masks.reshape((batch_size, num_joints, -1)).split(1, 1)
+        loss = 0
+
+        for idx in range(num_joints):
+            heatmap_pred = heatmaps_pred[idx].squeeze()
+            heatmap_gt = heatmaps_gt[idx].squeeze()
+            heatmap_weight = heatmaps_weight[idx].squeeze()
+            if self.use_target_weight:
+                loss += 0.5 * self.criterion(
+                    heatmap_pred.mul(target_weight[:, idx]),
+                    heatmap_gt.mul(target_weight[:, idx]),
+                    heatmap_weight
+                )
+            else:
+                loss += 0.5 * self.criterion(heatmap_pred, heatmap_gt, heatmap_weight)
 
         return loss / num_joints
 
