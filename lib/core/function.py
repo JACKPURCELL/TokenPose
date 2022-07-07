@@ -58,7 +58,7 @@ def train(config, train_loader, model, teacher, criterion, optimizer, epoch,
             target = target.cuda(non_blocking=True)
             target_weight = target_weight.cuda(non_blocking=True)
             # outputs_anchor->accuracy
-            patch_size = 16
+            patch_size = 8
             pred_anchor_, _ = get_max_preds(outputs_anchor.cpu().numpy())
             pred_anchor_=pred_anchor_.astype(int)
             # pred_anchor_=torch.from_numpy(pred_anchor_).cuda()
@@ -72,7 +72,7 @@ def train(config, train_loader, model, teacher, criterion, optimizer, epoch,
 
             m = torch.nn.Upsample(scale_factor=4 * patch_size, mode='nearest')
             mm = torch.nn.Upsample(scale_factor=4, mode='nearest')
-            for k in range(3):
+            for k in range(1):
                 indices = random.sample(range(pred_anchor_.shape[1]), int(pred_anchor_.shape[1] * mask_ratio))
                 pred_anchor = np.take(pred_anchor_, indices,axis=1)
                 mask_ = torch.ones(input.shape[0],input.shape[1],int(outputs_anchor.shape[2]/patch_size),int(outputs_anchor.shape[3]/patch_size))
